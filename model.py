@@ -6,9 +6,13 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.layers import Dense, Dropout, Flatten
 from pathlib import Path
+from livelossplot.inputs.keras import PlotLossesCallback
+
 import numpy as np
 
 BATCH_SIZE = 64
+IMG_SHAPE  = 224
+
 
 train_generator = ImageDataGenerator(rotation_range=90, 
                                      brightness_range=[0.1, 0.7],
@@ -34,29 +38,23 @@ class_subset = sorted(os.listdir(TRAIN_PATH))
 traingen = train_generator.flow_from_directory(TRAIN_PATH,
                                                target_size=(224, 224),
                                                class_mode='categorical',
-                                               classes=class_subset,
-                                               subset='training',
                                                batch_size=BATCH_SIZE, 
                                                shuffle=True,
-                                               seed=42)
+                                               seed=1)
 
 
 validgen = train_generator.flow_from_directory(VALID_PATH,
                                                target_size=(224, 224),
                                                class_mode='categorical',
-                                               classes=class_subset,
-                                               subset='validation',
                                                batch_size=BATCH_SIZE,
                                                shuffle=True,
-                                               seed=42)
+                                               seed=1)
 
 testgen = test_generator.flow_from_directory(TEST_PATH,
                                              target_size=(224, 224),
-                                             class_mode=None,
-                                             classes=class_subset,
                                              batch_size=1,
                                              shuffle=False,
-                                             seed=42)
+                                             seed=1)
 
 
 def create_model(input_shape, n_classes, optimizer='rmsprop', fine_tune=0):
@@ -108,4 +106,42 @@ def create_model(input_shape, n_classes, optimizer='rmsprop', fine_tune=0):
 
 
 
-        
+
+input_shape = (224, 224, 3)
+optim_1 = Adam(learning_rate=0.001)
+n_classes=24
+
+
+n_steps = traingen.samples // BATCH_SIZE
+
+print("n_steps :",n_steps)
+n_steps= 17
+n_val_steps = validgen.samples // BATCH_SIZE
+n_epochs = 50
+
+# First we'll train the model without Fine-tuning
+vgg_model = create_model(input_shape, n_classes, optim_1, fine_tune=0)
+print(vgg_model.summary())    
+
+plot_loss_1 = PlotLossesCallback()
+
+# ModelCheckpoint callback - save best weights
+tl_checkpoint_1 = ModelCheckpoint(filepath='tl_model_v1.weights.best.hdf5',
+                                save_best_only=True,
+                                verbose=1)
+
+# EarlyStopping
+early_stop = EarlyStopping(monitor='val_loss',
+                        patience=10,
+                        restore_best_weights=True,
+                        mode='min')      
+
+
+vgg_history = vgg_model.fit(traingen,
+                            batch_size=BATCH_SIZE,
+                            epochs=n_epochs,
+                            validation_data=validgen,
+                            steps_per_epoch=n_steps,
+                            validation_steps=n_val_steps,
+                            callbacks=[tl_checkpoint_1, early_stop, plot_loss_1],
+                            verbose=1)
